@@ -11,12 +11,21 @@ module duco_top (
     output wire [1:0] led       // Active-low onboard LEDs (pins 15, 16)
 );
 
-    localparam integer CLKS_PER_BIT = 234; // 27,000,000 / 115,200
+    localparam integer CLKS_PER_BIT = 391; // 45,000,000 / 115,200
 
-    // Internal Power-On Reset + active-high S1 button reset
+    wire sys_clk;
+    wire pll_locked;
+
+    pll u_pll (
+        .clock_in  (clk),
+        .clock_out (sys_clk),
+        .locked    (pll_locked)
+    );
+
+    // Internal Power-On Reset + active-high S1 button reset + PLL lock
     reg [7:0] por_cnt = 8'd0;
-    always @(posedge clk) begin
-        if (btn_rst)
+    always @(posedge sys_clk) begin
+        if (btn_rst || !pll_locked)
             por_cnt <= 8'd0;
         else if (!por_cnt[7])
             por_cnt <= por_cnt + 8'd1;
@@ -30,7 +39,7 @@ module duco_top (
     wire       tx_busy;
 
     uart_rx #(.CLKS_PER_BIT(CLKS_PER_BIT)) u_rx (
-        .clk      (clk),
+        .clk      (sys_clk),
         .rst_n    (rst_n),
         .rx       (uart_rx),
         .rx_valid (rx_valid),
@@ -38,7 +47,7 @@ module duco_top (
     );
 
     uart_tx #(.CLKS_PER_BIT(CLKS_PER_BIT)) u_tx (
-        .clk      (clk),
+        .clk      (sys_clk),
         .rst_n    (rst_n),
         .tx_start (tx_start),
         .tx_data  (tx_data),
@@ -56,7 +65,7 @@ module duco_top (
     wire [31:0]  miner_nonce;
 
     duco_miner u_miner (
-        .clk         (clk),
+        .clk         (sys_clk),
         .rst_n       (rst_n),
         .start       (miner_start),
         .base_hash   (base_hash),
@@ -112,7 +121,7 @@ module duco_top (
         end
     end
 
-    always @(posedge clk or negedge rst_n) begin
+    always @(posedge sys_clk or negedge rst_n) begin
         if (!rst_n) begin
             state       <= ST_RX_BASE;
             char_cnt    <= 6'd0;
