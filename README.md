@@ -35,7 +35,7 @@ make sim
 
 | Branch | Architecture | @ 27 MHz | `Fmax` | Max @ `Fmax` |
 |---|---|---|---|---|
-| `master` | 2 cores × 2 rounds/cycle (`kw` pre-add) | ~1.22 MH/s | ~38.6 MHz | **~1.75 MH/s** |
+| `master` | 10 cores × 1 round/cycle (lockstep shift-reg) | ~3.29 MH/s | ~45.5 MHz | **~5.54 MH/s** |
 | `4core-1round` | 4 cores × 1 round/cycle (`kw` pre-add) | ~1.28 MH/s | ~34.5 MHz | **~1.64 MH/s** |
 
 ## 3. Build & Flash to Tang Nano 20K
