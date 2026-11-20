@@ -33,8 +33,9 @@ make sim
 
 ## 3. Build & Flash to Tang Nano 20K (when board arrives)
 
-Note: `duco_miner` currently exposes parallel ports (`base_hash`, `target_hash`, `max_nonce`, `found_nonce`). Before flashing to hardware, wrap `duco_miner` in a UART top-level module (using pins 69/70 in `tangnano20k.cst`) to receive jobs from a host script and return found nonces.
+`duco_top.v` wraps `duco_miner` with a 115200 8N1 UART interface (pins 69/70 in `tangnano20k.cst`).
 
 ```bash
 make flash
+./host/miner_host.py --username YOUR_DUCO_USERNAME --miner-key YOUR_KEY --backend serial --port /dev/ttyUSB1
 ```

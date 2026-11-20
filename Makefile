@@ -37,6 +37,7 @@ pnr: synth $(CST)
 	nextpnr-himbaechel --json $(BUILD_DIR)/$(TOP_FPGA).json \
 		--write $(BUILD_DIR)/$(TOP_FPGA)_pnr.json \
 		--device $(DEVICE) \
+		--freq 27 \
 		--vopt family=$(FAMILY) \
 		--vopt cst=$(CST)
 
