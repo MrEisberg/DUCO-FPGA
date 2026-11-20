@@ -5,13 +5,23 @@
 
 module duco_top (
     input  wire       clk,      // 27 MHz onboard oscillator (pin 4)
-    input  wire       rst_n,    // Active-low reset button (pin 88)
+    input  wire       btn_rst,  // Active-high reset button S1 (pin 88)
     input  wire       uart_rx,  // UART RX (pin 70)
     output wire       uart_tx,  // UART TX (pin 69)
     output wire [1:0] led       // Active-low onboard LEDs (pins 15, 16)
 );
 
     localparam integer CLKS_PER_BIT = 234; // 27,000,000 / 115,200
+
+    // Internal Power-On Reset + active-high S1 button reset
+    reg [7:0] por_cnt = 8'd0;
+    always @(posedge clk) begin
+        if (btn_rst)
+            por_cnt <= 8'd0;
+        else if (!por_cnt[7])
+            por_cnt <= por_cnt + 8'd1;
+    end
+    wire rst_n = por_cnt[7];
 
     wire       rx_valid;
     wire [7:0] rx_data;

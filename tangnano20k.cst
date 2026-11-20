@@ -5,9 +5,9 @@
 IO_LOC "clk" 4;
 IO_PORT "clk" IO_TYPE=LVCMOS33 PULL_MODE=NONE;
 
-// User button S1 (active-low on board, or S2 on pin 87)
-IO_LOC "rst_n" 88;
-IO_PORT "rst_n" IO_TYPE=LVCMOS33 PULL_MODE=UP;
+// User button S1 (active-high on Tang Nano 20K, external pull-down)
+IO_LOC "btn_rst" 88;
+IO_PORT "btn_rst" IO_TYPE=LVCMOS33 PULL_MODE=DOWN;
 
 // Onboard UART (connected to BL616 USB-UART bridge)
 IO_LOC "uart_tx" 69;
