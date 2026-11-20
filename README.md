@@ -31,6 +31,13 @@ Extract it and add its `bin/` directory to your `PATH`.
 make sim
 ```
 
+## Branches & Performance (Tang Nano 20K)
+
+| Branch | Architecture | @ 27 MHz | `Fmax` | Max @ `Fmax` |
+|---|---|---|---|---|
+| `master` | 2 cores × 2 rounds/cycle (`kw` pre-add) | ~1.22 MH/s | ~38.6 MHz | **~1.75 MH/s** |
+| `4core-1round` | 4 cores × 1 round/cycle (`kw` pre-add) | ~1.28 MH/s | ~34.5 MHz | **~1.64 MH/s** |
+
 ## 3. Build & Flash to Tang Nano 20K (when board arrives)
 
 `duco_top.v` wraps `duco_miner` with a 115200 8N1 UART interface (pins 69/70 in `tangnano20k.cst`).
