@@ -1,14 +1,14 @@
-// Synthesizable 2x-unrolled iterative SHA-1 core (2 rounds per clock cycle, 40 cycles)
-// Suitable for Verilator simulation and Gowin GW2AR-18 (Tang Nano 20K)
+// Synthesizable 1-round/cycle SHA-1 core with k + w[t] pre-addition (80 cycles)
+// Optimized for high Fmax in 4-core Tang Nano 20K builds.
 
 module sha1_core (
     input  wire         clk,
     input  wire         rst_n,
     input  wire         start,
-    input  wire [511:0] block,   // Big-endian 512-bit padded message block
+    input  wire [511:0] block,
     output reg          busy,
     output reg          done,
-    output reg  [159:0] digest   // {h0, h1, h2, h3, h4}
+    output reg  [159:0] digest
 );
 
     localparam [31:0] H0_INIT = 32'h67452301;
@@ -25,7 +25,7 @@ module sha1_core (
     reg [6:0]  t;
     reg [31:0] w [0:15];
     reg [31:0] a, b, c, d, e;
-    reg [31:0] kw0, kw1;
+    reg [31:0] kw;
 
     function automatic [31:0] rotl32(input [31:0] x, input [4:0] n);
         begin
@@ -64,42 +64,17 @@ module sha1_core (
         end
     endfunction
 
-    // Round t
     wire [3:0]  idx0     = t[3:0];
     wire [3:0]  idx0_m3  = idx0 - 4'd3;
     wire [3:0]  idx0_m8  = idx0 - 4'd8;
     wire [3:0]  idx0_m14 = idx0 - 4'd14;
-    wire [31:0] wt0_exp  = rotl32(w[idx0_m3] ^ w[idx0_m8] ^ w[idx0_m14] ^ w[idx0], 5'd1);
+    wire [31:0] wt_exp   = rotl32(w[idx0_m3] ^ w[idx0_m8] ^ w[idx0_m14] ^ w[idx0], 5'd1);
 
-    wire [31:0] temp0 = rotl32(a, 5'd5) + sha1_f(t, b, c, d) + e + kw0;
-    wire [31:0] a1    = temp0;
-    wire [31:0] b1    = a;
-    wire [31:0] c1    = rotl32(b, 5'd30);
-    wire [31:0] d1    = c;
-    wire [31:0] e1    = d;
+    wire [31:0] temp = rotl32(a, 5'd5) + sha1_f(t, b, c, d) + e + kw;
 
-    // Round t + 1 (idx1 = idx0 + 1, which is distinct from idx0 so w[idx1] is unchanged by wt0_exp)
-    wire [6:0]  t1       = t + 7'd1;
-    wire [3:0]  idx1     = idx0 + 4'd1;
-    wire [3:0]  idx1_m3  = idx1 - 4'd3;
-    wire [3:0]  idx1_m8  = idx1 - 4'd8;
-    wire [3:0]  idx1_m14 = idx1 - 4'd14;
-    wire [31:0] wt1_exp  = rotl32(w[idx1_m3] ^ w[idx1_m8] ^ w[idx1_m14] ^ w[idx1], 5'd1);
-
-    wire [31:0] temp1 = rotl32(a1, 5'd5) + sha1_f(t1, b1, c1, d1) + e1 + kw1;
-
-    // Pre-add k + w for next cycle (t + 2, t + 3)
-    wire [6:0]  t_next0 = t + 7'd2;
-    wire [6:0]  t_next1 = t + 7'd3;
-    wire [3:0]  idx_n0  = idx0 + 4'd2;
-    wire [3:0]  idx_n1  = idx0 + 4'd3;
-    wire [31:0] next_kw0 = sha1_k(t_next0) + w[idx_n0];
-    wire [31:0] next_kw1 = sha1_k(t_next1) + w[idx_n1];
-    wire [31:0] a2    = temp1;
-    wire [31:0] b2    = a1;
-    wire [31:0] c2    = rotl32(b1, 5'd30);
-    wire [31:0] d2    = c1;
-    wire [31:0] e2    = d1;
+    wire [6:0]  t_next  = t + 7'd1;
+    wire [3:0]  idx_n   = idx0 + 4'd1;
+    wire [31:0] next_kw = sha1_k(t_next) + w[idx_n];
 
     integer i;
 
@@ -111,7 +86,7 @@ module sha1_core (
             t      <= 7'd0;
             digest <= 160'd0;
             a <= 32'd0; b <= 32'd0; c <= 32'd0; d <= 32'd0; e <= 32'd0;
-            kw0 <= 32'd0; kw1 <= 32'd0;
+            kw <= 32'd0;
             for (i = 0; i < 16; i = i + 1) begin
                 w[i] <= 32'd0;
             end
@@ -130,29 +105,26 @@ module sha1_core (
                         d     <= H3_INIT;
                         e     <= H4_INIT;
                         t     <= 7'd0;
-                        kw0   <= 32'h5A827999 + block[511:480];
-                        kw1   <= 32'h5A827999 + block[479:448];
+                        kw    <= 32'h5A827999 + block[511:480];
                         busy  <= 1'b1;
                         state <= ROUNDS;
                     end
                 end
 
                 ROUNDS: begin
-                    a <= a2;
-                    b <= b2;
-                    c <= c2;
-                    d <= d2;
-                    e <= e2;
+                    e <= d;
+                    d <= c;
+                    c <= rotl32(b, 5'd30);
+                    b <= a;
+                    a <= temp;
 
-                    w[idx0] <= wt0_exp;
-                    w[idx1] <= wt1_exp;
-                    kw0     <= next_kw0;
-                    kw1     <= next_kw1;
+                    w[idx0] <= wt_exp;
+                    kw      <= next_kw;
 
-                    if (t == 7'd78) begin
+                    if (t == 7'd79) begin
                         state <= FINISH;
                     end else begin
-                        t <= t + 7'd2;
+                        t <= t + 7'd1;
                     end
                 end
 

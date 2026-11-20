@@ -187,44 +187,33 @@ module duco_miner (
     output reg  [31:0]  found_nonce
 );
 
-    wire        c0_done, c1_done;
-    wire        c0_found, c1_found;
-    wire [31:0] c0_nonce, c1_nonce;
+    wire [3:0]  c_done;
+    wire [3:0]  c_found;
+    wire [31:0] c_nonce [0:3];
+    reg  [3:0]  c_finished;
 
-    reg c0_finished, c1_finished;
-    wire abort_cores = (c0_done && c0_found) || (c1_done && c1_found);
+    wire abort_cores = |(c_done & c_found);
 
-    duco_miner_core #(
-        .INIT_NONCE(32'd0),
-        .STEP_NONCE(32'd2)
-    ) u_core_even (
-        .clk         (clk),
-        .rst_n       (rst_n),
-        .start       (start && !busy),
-        .abort       (abort_cores),
-        .base_hash   (base_hash),
-        .target_hash (target_hash),
-        .max_nonce   (max_nonce),
-        .done        (c0_done),
-        .found       (c0_found),
-        .found_nonce (c0_nonce)
-    );
-
-    duco_miner_core #(
-        .INIT_NONCE(32'd1),
-        .STEP_NONCE(32'd2)
-    ) u_core_odd (
-        .clk         (clk),
-        .rst_n       (rst_n),
-        .start       (start && !busy),
-        .abort       (abort_cores),
-        .base_hash   (base_hash),
-        .target_hash (target_hash),
-        .max_nonce   (max_nonce),
-        .done        (c1_done),
-        .found       (c1_found),
-        .found_nonce (c1_nonce)
-    );
+    genvar g;
+    generate
+        for (g = 0; g < 4; g = g + 1) begin : gen_cores
+            duco_miner_core #(
+                .INIT_NONCE(g),
+                .STEP_NONCE(32'd4)
+            ) u_core (
+                .clk         (clk),
+                .rst_n       (rst_n),
+                .start       (start && !busy),
+                .abort       (abort_cores),
+                .base_hash   (base_hash),
+                .target_hash (target_hash),
+                .max_nonce   (max_nonce),
+                .done        (c_done[g]),
+                .found       (c_found[g]),
+                .found_nonce (c_nonce[g])
+            );
+        end
+    endgenerate
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
@@ -232,8 +221,7 @@ module duco_miner (
             done        <= 1'b0;
             found       <= 1'b0;
             found_nonce <= 32'd0;
-            c0_finished <= 1'b0;
-            c1_finished <= 1'b0;
+            c_finished  <= 4'b0000;
         end else begin
             done <= 1'b0;
 
@@ -241,24 +229,19 @@ module duco_miner (
                 busy        <= 1'b1;
                 found       <= 1'b0;
                 found_nonce <= 32'd0;
-                c0_finished <= 1'b0;
-                c1_finished <= 1'b0;
+                c_finished  <= 4'b0000;
             end else if (busy) begin
-                if (c0_done && c0_found) begin
-                    found       <= 1'b1;
-                    found_nonce <= c0_nonce;
-                    busy        <= 1'b0;
-                    done        <= 1'b1;
-                end else if (c1_done && c1_found) begin
-                    found       <= 1'b1;
-                    found_nonce <= c1_nonce;
-                    busy        <= 1'b0;
-                    done        <= 1'b1;
+                if (c_done[0] && c_found[0]) begin
+                    found <= 1'b1; found_nonce <= c_nonce[0]; busy <= 1'b0; done <= 1'b1;
+                end else if (c_done[1] && c_found[1]) begin
+                    found <= 1'b1; found_nonce <= c_nonce[1]; busy <= 1'b0; done <= 1'b1;
+                end else if (c_done[2] && c_found[2]) begin
+                    found <= 1'b1; found_nonce <= c_nonce[2]; busy <= 1'b0; done <= 1'b1;
+                end else if (c_done[3] && c_found[3]) begin
+                    found <= 1'b1; found_nonce <= c_nonce[3]; busy <= 1'b0; done <= 1'b1;
                 end else begin
-                    if (c0_done) c0_finished <= 1'b1;
-                    if (c1_done) c1_finished <= 1'b1;
-
-                    if ((c0_finished || c0_done) && (c1_finished || c1_done)) begin
+                    c_finished <= c_finished | c_done;
+                    if (&(c_finished | c_done)) begin
                         found <= 1'b0;
                         busy  <= 1'b0;
                         done  <= 1'b1;
