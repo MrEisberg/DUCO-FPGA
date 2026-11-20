@@ -1,4 +1,4 @@
-// Synthesizable iterative SHA-1 core (1 round per clock cycle, 80 rounds)
+// Synthesizable 2x-unrolled iterative SHA-1 core (2 rounds per clock cycle, 40 cycles)
 // Suitable for Verilator simulation and Gowin GW2AR-18 (Tang Nano 20K)
 
 module sha1_core (
@@ -32,36 +32,67 @@ module sha1_core (
         end
     endfunction
 
-    // Current W[t] and next expanded W[t]
-    wire [3:0]  idx3    = t[3:0] - 4'd3;
-    wire [3:0]  idx8    = t[3:0] - 4'd8;
-    wire [3:0]  idx14   = t[3:0] - 4'd14;
-    wire [31:0] wt_curr = w[t[3:0]];
-    wire [31:0] wt_exp  = rotl32(
-        w[idx3] ^ w[idx8] ^ w[idx14] ^ w[t[3:0]],
-        5'd1
+    function automatic [31:0] sha1_f(
+        input [6:0]  round_idx,
+        input [31:0] bx,
+        input [31:0] cx,
+        input [31:0] dx
     );
-
-    reg [31:0] f_val;
-    reg [31:0] k_val;
-
-    always @(*) begin
-        if (t < 7'd20) begin
-            f_val = (b & c) | ((~b) & d);
-            k_val = 32'h5A827999;
-        end else if (t < 7'd40) begin
-            f_val = b ^ c ^ d;
-            k_val = 32'h6ED9EBA1;
-        end else if (t < 7'd60) begin
-            f_val = (b & c) | (b & d) | (c & d);
-            k_val = 32'h8F1BBCDC;
-        end else begin
-            f_val = b ^ c ^ d;
-            k_val = 32'hCA62C1D6;
+        begin
+            if (round_idx < 7'd20)
+                sha1_f = (bx & cx) | ((~bx) & dx);
+            else if (round_idx < 7'd40)
+                sha1_f = bx ^ cx ^ dx;
+            else if (round_idx < 7'd60)
+                sha1_f = (bx & cx) | (bx & dx) | (cx & dx);
+            else
+                sha1_f = bx ^ cx ^ dx;
         end
-    end
+    endfunction
 
-    wire [31:0] temp = rotl32(a, 5'd5) + f_val + e + k_val + wt_curr;
+    function automatic [31:0] sha1_k(input [6:0] round_idx);
+        begin
+            if (round_idx < 7'd20)
+                sha1_k = 32'h5A827999;
+            else if (round_idx < 7'd40)
+                sha1_k = 32'h6ED9EBA1;
+            else if (round_idx < 7'd60)
+                sha1_k = 32'h8F1BBCDC;
+            else
+                sha1_k = 32'hCA62C1D6;
+        end
+    endfunction
+
+    // Round t
+    wire [3:0]  idx0     = t[3:0];
+    wire [3:0]  idx0_m3  = idx0 - 4'd3;
+    wire [3:0]  idx0_m8  = idx0 - 4'd8;
+    wire [3:0]  idx0_m14 = idx0 - 4'd14;
+    wire [31:0] wt0      = w[idx0];
+    wire [31:0] wt0_exp  = rotl32(w[idx0_m3] ^ w[idx0_m8] ^ w[idx0_m14] ^ w[idx0], 5'd1);
+
+    wire [31:0] temp0 = rotl32(a, 5'd5) + sha1_f(t, b, c, d) + e + sha1_k(t) + wt0;
+    wire [31:0] a1    = temp0;
+    wire [31:0] b1    = a;
+    wire [31:0] c1    = rotl32(b, 5'd30);
+    wire [31:0] d1    = c;
+    wire [31:0] e1    = d;
+
+    // Round t + 1 (idx1 = idx0 + 1, which is distinct from idx0 so w[idx1] is unchanged by wt0_exp)
+    wire [6:0]  t1       = t + 7'd1;
+    wire [3:0]  idx1     = idx0 + 4'd1;
+    wire [3:0]  idx1_m3  = idx1 - 4'd3;
+    wire [3:0]  idx1_m8  = idx1 - 4'd8;
+    wire [3:0]  idx1_m14 = idx1 - 4'd14;
+    wire [31:0] wt1      = w[idx1];
+    wire [31:0] wt1_exp  = rotl32(w[idx1_m3] ^ w[idx1_m8] ^ w[idx1_m14] ^ w[idx1], 5'd1);
+
+    wire [31:0] temp1 = rotl32(a1, 5'd5) + sha1_f(t1, b1, c1, d1) + e1 + sha1_k(t1) + wt1;
+    wire [31:0] a2    = temp1;
+    wire [31:0] b2    = a1;
+    wire [31:0] c2    = rotl32(b1, 5'd30);
+    wire [31:0] d2    = c1;
+    wire [31:0] e2    = d1;
 
     integer i;
 
@@ -97,19 +128,19 @@ module sha1_core (
                 end
 
                 ROUNDS: begin
-                    e <= d;
-                    d <= c;
-                    c <= rotl32(b, 5'd30);
-                    b <= a;
-                    a <= temp;
+                    a <= a2;
+                    b <= b2;
+                    c <= c2;
+                    d <= d2;
+                    e <= e2;
 
-                    // Pre-compute W[t+16] in-place for rounds >= 16
-                    w[t[3:0]] <= wt_exp;
+                    w[idx0] <= wt0_exp;
+                    w[idx1] <= wt1_exp;
 
-                    if (t == 7'd79) begin
+                    if (t == 7'd78) begin
                         state <= FINISH;
                     end else begin
-                        t <= t + 7'd1;
+                        t <= t + 7'd2;
                     end
                 end
 

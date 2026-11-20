@@ -1,17 +1,21 @@
-// DUCO-S1 Miner Core
-// Iterates nonce from 0 to max_nonce, computes SHA1(base_hash || ascii(nonce)),
-// and compares against target_hash.
+// DUCO-S1 Dual-Core Even/Odd Miner
+// Splits a single job across 2 cores (even nonces 0,2,4... and odd nonces 1,3,5...)
+// to double throughput without triggering the Kolka multi-miner penalty.
 
-module duco_miner (
+/* verilator lint_off DECLFILENAME */
+module duco_miner_core #(
+    parameter [31:0] INIT_NONCE = 32'd0,
+    parameter [31:0] STEP_NONCE = 32'd2
+) (
     input  wire         clk,
     input  wire         rst_n,
     input  wire         start,
-    input  wire [319:0] base_hash,    // 40 ASCII hex bytes (byte 0 at MSB [319:312])
-    input  wire [159:0] target_hash,  // Expected 160-bit SHA-1 digest
-    input  wire [31:0]  max_nonce,    // Maximum nonce to test (inclusive)
-    output reg          busy,
-    output reg          done,         // Pulses high when search finishes (found or exhausted)
-    output reg          found,        // High if target_hash was matched
+    input  wire         abort,
+    input  wire [319:0] base_hash,
+    input  wire [159:0] target_hash,
+    input  wire [31:0]  max_nonce,
+    output reg          done,
+    output reg          found,
     output reg  [31:0]  found_nonce
 );
 
@@ -24,7 +28,7 @@ module duco_miner (
 
     // 10-digit decimal counter (digits[0] = least significant digit)
     reg [3:0]  digits [0:9];
-    reg [3:0]  num_digits; // 1..10
+    reg [3:0]  num_digits;
 
     reg          sha_start;
     reg  [511:0] sha_block;
@@ -43,10 +47,8 @@ module duco_miner (
         .digest (sha_digest)
     );
 
-    // Build 512-bit (64-byte) padded SHA-1 block combinationally
-    // Byte 0 is sha_block[511:504], Byte 63 is sha_block[7:0]
     integer b;
-    reg [7:0] msg_bytes [0:63];
+    reg [7:0]  msg_bytes [0:63];
     reg [15:0] bit_len;
 
     always @(*) begin
@@ -54,22 +56,18 @@ module duco_miner (
             msg_bytes[b] = 8'h00;
         end
 
-        // First 40 bytes: base_hash
         for (b = 0; b < 40; b = b + 1) begin
             msg_bytes[b] = base_hash[319 - b*8 -: 8];
         end
 
-        // Next num_digits bytes: ASCII decimal of nonce (MSD first)
         for (b = 0; b < 10; b = b + 1) begin
             if (b < {28'd0, num_digits}) begin
                 msg_bytes[40 + b] = 8'h30 + {4'd0, digits[num_digits - 4'd1 - b[3:0]]};
             end
         end
 
-        // SHA-1 padding: 0x80 immediately after message
         msg_bytes[6'd40 + {2'd0, num_digits}] = 8'h80;
 
-        // 64-bit big-endian bit length at bytes 56..63 (fits in 16 bits)
         bit_len = (16'd40 + {12'd0, num_digits}) << 3;
         msg_bytes[62] = bit_len[15:8];
         msg_bytes[63] = bit_len[7:0];
@@ -79,25 +77,23 @@ module duco_miner (
         end
     end
 
-    // Increment 10-digit decimal counter
+    // Increment 10-digit decimal counter by STEP_NONCE (2)
     integer d_idx;
-    reg carry;
+    reg [4:0] sum_d;
+    reg [3:0] carry;
     reg [3:0] next_digits [0:9];
     reg [3:0] next_num_digits;
 
     always @(*) begin
-        carry = 1'b1;
+        carry = STEP_NONCE[3:0];
         for (d_idx = 0; d_idx < 10; d_idx = d_idx + 1) begin
-            if (carry) begin
-                if (digits[d_idx] == 4'd9) begin
-                    next_digits[d_idx] = 4'd0;
-                    carry = 1'b1;
-                end else begin
-                    next_digits[d_idx] = digits[d_idx] + 4'd1;
-                    carry = 1'b0;
-                end
+            sum_d = {1'b0, digits[d_idx]} + {1'b0, carry};
+            if (sum_d >= 5'd10) begin
+                next_digits[d_idx] = sum_d[3:0] - 4'd10;
+                carry = 4'd1;
             end else begin
-                next_digits[d_idx] = digits[d_idx];
+                next_digits[d_idx] = sum_d[3:0];
+                carry = 4'd0;
             end
         end
 
@@ -110,11 +106,10 @@ module duco_miner (
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             state       <= IDLE;
-            busy        <= 1'b0;
             done        <= 1'b0;
             found       <= 1'b0;
             found_nonce <= 32'd0;
-            nonce       <= 32'd0;
+            nonce       <= INIT_NONCE;
             sha_start   <= 1'b0;
             num_digits  <= 4'd1;
             for (d_idx = 0; d_idx < 10; d_idx = d_idx + 1) begin
@@ -124,52 +119,152 @@ module duco_miner (
             done      <= 1'b0;
             sha_start <= 1'b0;
 
-            case (state)
-                IDLE: begin
-                    if (start) begin
-                        busy        <= 1'b1;
-                        found       <= 1'b0;
-                        found_nonce <= 32'd0;
-                        nonce       <= 32'd0;
-                        num_digits  <= 4'd1;
-                        for (d_idx = 0; d_idx < 10; d_idx = d_idx + 1) begin
-                            digits[d_idx] <= 4'd0;
-                        end
-                        state <= START_SHA;
-                    end
-                end
-
-                START_SHA: begin
-                    sha_start <= 1'b1;
-                    state     <= WAIT_SHA;
-                end
-
-                WAIT_SHA: begin
-                    if (sha_done) begin
-                        if (sha_digest == target_hash) begin
-                            found       <= 1'b1;
-                            found_nonce <= nonce;
-                            busy        <= 1'b0;
-                            done        <= 1'b1;
-                            state       <= IDLE;
-                        end else if (nonce >= max_nonce) begin
+            if (abort) begin
+                state <= IDLE;
+            end else begin
+                case (state)
+                    IDLE: begin
+                        if (start) begin
                             found       <= 1'b0;
-                            busy        <= 1'b0;
-                            done        <= 1'b1;
-                            state       <= IDLE;
-                        end else begin
-                            nonce      <= nonce + 32'd1;
-                            num_digits <= next_num_digits;
-                            for (d_idx = 0; d_idx < 10; d_idx = d_idx + 1) begin
-                                digits[d_idx] <= next_digits[d_idx];
+                            found_nonce <= 32'd0;
+                            nonce       <= INIT_NONCE;
+                            num_digits  <= 4'd1;
+                            digits[0]   <= INIT_NONCE[3:0];
+                            for (d_idx = 1; d_idx < 10; d_idx = d_idx + 1) begin
+                                digits[d_idx] <= 4'd0;
                             end
                             state <= START_SHA;
                         end
                     end
-                end
 
-                default: state <= IDLE;
-            endcase
+                    START_SHA: begin
+                        sha_start <= 1'b1;
+                        state     <= WAIT_SHA;
+                    end
+
+                    WAIT_SHA: begin
+                        if (sha_done) begin
+                            if (sha_digest == target_hash) begin
+                                found       <= 1'b1;
+                                found_nonce <= nonce;
+                                done        <= 1'b1;
+                                state       <= IDLE;
+                            end else if (nonce + STEP_NONCE > max_nonce) begin
+                                found <= 1'b0;
+                                done  <= 1'b1;
+                                state <= IDLE;
+                            end else begin
+                                nonce      <= nonce + STEP_NONCE;
+                                num_digits <= next_num_digits;
+                                for (d_idx = 0; d_idx < 10; d_idx = d_idx + 1) begin
+                                    digits[d_idx] <= next_digits[d_idx];
+                                end
+                                state <= START_SHA;
+                            end
+                        end
+                    end
+
+                    default: state <= IDLE;
+                endcase
+            end
+        end
+    end
+
+endmodule
+/* verilator lint_on DECLFILENAME */
+
+
+module duco_miner (
+    input  wire         clk,
+    input  wire         rst_n,
+    input  wire         start,
+    input  wire [319:0] base_hash,
+    input  wire [159:0] target_hash,
+    input  wire [31:0]  max_nonce,
+    output reg          busy,
+    output reg          done,
+    output reg          found,
+    output reg  [31:0]  found_nonce
+);
+
+    wire        c0_done, c1_done;
+    wire        c0_found, c1_found;
+    wire [31:0] c0_nonce, c1_nonce;
+
+    reg c0_finished, c1_finished;
+    wire abort_cores = (c0_done && c0_found) || (c1_done && c1_found);
+
+    duco_miner_core #(
+        .INIT_NONCE(32'd0),
+        .STEP_NONCE(32'd2)
+    ) u_core_even (
+        .clk         (clk),
+        .rst_n       (rst_n),
+        .start       (start && !busy),
+        .abort       (abort_cores),
+        .base_hash   (base_hash),
+        .target_hash (target_hash),
+        .max_nonce   (max_nonce),
+        .done        (c0_done),
+        .found       (c0_found),
+        .found_nonce (c0_nonce)
+    );
+
+    duco_miner_core #(
+        .INIT_NONCE(32'd1),
+        .STEP_NONCE(32'd2)
+    ) u_core_odd (
+        .clk         (clk),
+        .rst_n       (rst_n),
+        .start       (start && !busy),
+        .abort       (abort_cores),
+        .base_hash   (base_hash),
+        .target_hash (target_hash),
+        .max_nonce   (max_nonce),
+        .done        (c1_done),
+        .found       (c1_found),
+        .found_nonce (c1_nonce)
+    );
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            busy        <= 1'b0;
+            done        <= 1'b0;
+            found       <= 1'b0;
+            found_nonce <= 32'd0;
+            c0_finished <= 1'b0;
+            c1_finished <= 1'b0;
+        end else begin
+            done <= 1'b0;
+
+            if (start && !busy) begin
+                busy        <= 1'b1;
+                found       <= 1'b0;
+                found_nonce <= 32'd0;
+                c0_finished <= 1'b0;
+                c1_finished <= 1'b0;
+            end else if (busy) begin
+                if (c0_done && c0_found) begin
+                    found       <= 1'b1;
+                    found_nonce <= c0_nonce;
+                    busy        <= 1'b0;
+                    done        <= 1'b1;
+                end else if (c1_done && c1_found) begin
+                    found       <= 1'b1;
+                    found_nonce <= c1_nonce;
+                    busy        <= 1'b0;
+                    done        <= 1'b1;
+                end else begin
+                    if (c0_done) c0_finished <= 1'b1;
+                    if (c1_done) c1_finished <= 1'b1;
+
+                    if ((c0_finished || c0_done) && (c1_finished || c1_done)) begin
+                        found <= 1'b0;
+                        busy  <= 1'b0;
+                        done  <= 1'b1;
+                    end
+                end
+            end
         end
     end
 
