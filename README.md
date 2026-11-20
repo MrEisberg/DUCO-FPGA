@@ -33,10 +33,10 @@ make sim
 
 ## Branches & Performance (Tang Nano 20K)
 
-| Branch | Architecture | @ 27 MHz | `Fmax` | Max @ `Fmax` |
+| Branch | Architecture | Clock | `Fmax` | Hashrate |
 |---|---|---|---|---|
-| `master` | 10 cores × 1 round/cycle (lockstep shift-reg) | ~3.29 MH/s | ~45.5 MHz | **~5.54 MH/s** |
-| `4core-1round` | 4 cores × 1 round/cycle (`kw` pre-add) | ~1.28 MH/s | ~34.5 MHz | **~1.64 MH/s** |
+| `master` | 10 cores × 1 round/cycle (shift-reg + 45 MHz `rPLL`) | 45 MHz | ~48.6 MHz | **~5.49 MH/s** |
+| `4core-1round` | 4 cores × 1 round/cycle (`kw` pre-add) | 27 MHz | ~34.5 MHz | **~1.28 MH/s** |
 
 ## 3. Build & Flash to Tang Nano 20K
 
