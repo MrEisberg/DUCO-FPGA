@@ -8,12 +8,38 @@ and submits found nonces back to the pool.
 
 import argparse
 import json
+import os
 import random
 import socket
 import subprocess
 import sys
 import time
 import urllib.request
+
+
+class Colors:
+    def __init__(self, enabled: bool):
+        if enabled and os.name == "nt":
+            os.system("")  # Enable ANSI escape sequences on Windows 10+
+        self.RESET = "\033[0m" if enabled else ""
+        self.DIM = "\033[90m" if enabled else ""
+        self.BOLD = "\033[1m" if enabled else ""
+        self.GREEN = "\033[92m" if enabled else ""
+        self.RED = "\033[91m" if enabled else ""
+        self.YELLOW = "\033[93m" if enabled else ""
+        self.CYAN = "\033[96m" if enabled else ""
+
+
+def fmt_hashrate(hs: float) -> str:
+    if hs >= 1_000_000:
+        return f"{hs / 1_000_000:.2f} MH/s"
+    if hs >= 1_000:
+        return f"{hs / 1_000:.2f} kH/s"
+    return f"{hs:.0f} H/s"
+
+
+def ts() -> str:
+    return time.strftime("%H:%M:%S")
 
 
 def get_pool(timeout: float = 10.0) -> tuple[str, int]:
@@ -119,20 +145,26 @@ class SerialBackend:
 
 
 def mine_loop(args: argparse.Namespace) -> None:
+    c = Colors(not args.no_color and sys.stdout.isatty())
     if args.backend == "sim":
         backend = SimBackend(args.sim_bin)
     else:
         backend = SerialBackend(args.port, args.baud)
 
+    good_shares = 0
+    bad_shares = 0
+    total_hashes = 0
+    total_time = 0.0
+
     try:
         while True:
             try:
                 host, port = (args.host, args.port_num) if args.host else get_pool()
-                print(f"[INFO] Connecting to {host}:{port} ...")
+                print(f"{c.DIM}{ts()}{c.RESET} {c.CYAN}[INFO]{c.RESET} Connecting to {host}:{port} ...")
                 with socket.create_connection((host, port), timeout=15) as sock:
                     f = sock.makefile("rw", encoding="utf-8", newline="\n")
                     version = f.readline().strip()
-                    print(f"[INFO] Connected (server version: {version})")
+                    print(f"{c.DIM}{ts()}{c.RESET} {c.CYAN}[INFO]{c.RESET} Connected (server v{version})")
 
                     while True:
                         # Pool protocol: JOB,username,difficulty,mining_key,extra
@@ -141,12 +173,12 @@ def mine_loop(args: argparse.Namespace) -> None:
 
                         job_line = f.readline().strip()
                         if not job_line:
-                            print("[WARN] Empty response from server, reconnecting...")
+                            print(f"{c.DIM}{ts()}{c.RESET} {c.YELLOW}[WARN]{c.RESET} Empty response from server, reconnecting...")
                             break
 
                         parts = job_line.split(",")
                         if len(parts) < 3:
-                            print(f"[WARN] Unexpected server message: {job_line}")
+                            print(f"{c.DIM}{ts()}{c.RESET} {c.YELLOW}[WARN]{c.RESET} Unexpected server message: {job_line}")
                             break
 
                         base_hash, target_hash, difficulty_s = parts[0], parts[1], parts[2]
@@ -157,10 +189,14 @@ def mine_loop(args: argparse.Namespace) -> None:
                         dt = max(time.perf_counter() - t0, 1e-9)
 
                         if not found:
-                            print(f"[WARN] Nonce not found within {max_nonce} (cycles={cycles})")
+                            print(f"{c.DIM}{ts()}{c.RESET} {c.YELLOW}[WARN]{c.RESET} Nonce not found within {max_nonce}")
                             continue
 
                         hashrate = (nonce + 1) / dt
+                        total_hashes += nonce + 1
+                        total_time += dt
+                        avg_hr = total_hashes / total_time
+
                         # Share submission: nonce,hashrate,software,rigid,chip_id,wallet_id
                         f.write(
                             f"{nonce},{hashrate:.2f},{args.software},"
@@ -169,12 +205,25 @@ def mine_loop(args: argparse.Namespace) -> None:
                         f.flush()
 
                         feedback = f.readline().strip()
+                        is_good = "GOOD" in feedback
+                        if is_good:
+                            good_shares += 1
+                            tag = f"{c.GREEN}[GOOD]{c.RESET}"
+                        else:
+                            bad_shares += 1
+                            tag = f"{c.RED}[{feedback or 'BAD'}]{c.RESET}"
+
+                        total_shares = good_shares + bad_shares
+                        cyc_str = f" cycles={cycles}" if args.backend == "sim" else ""
                         print(
-                            f"[{feedback}] nonce={nonce} diff={difficulty_s} "
-                            f"cycles={cycles} time={dt:.3f}s hashrate={hashrate/1000:.2f} kH/s"
+                            f"{c.DIM}{ts()}{c.RESET} {tag} #{total_shares:<3} "
+                            f"{c.BOLD}{fmt_hashrate(hashrate):>10}{c.RESET} "
+                            f"{c.DIM}({dt:5.2f}s){c.RESET} "
+                            f"diff={difficulty_s:<7} nonce={nonce}{cyc_str} "
+                            f"{c.DIM}[avg {fmt_hashrate(avg_hr)}, {good_shares}/{total_shares}]{c.RESET}"
                         )
             except (OSError, ValueError, RuntimeError) as exc:
-                print(f"[ERROR] {exc} — retrying in 5s...")
+                print(f"{c.DIM}{ts()}{c.RESET} {c.RED}[ERROR]{c.RESET} {exc} — retrying in 5s...")
                 time.sleep(5)
     finally:
         backend.close()
@@ -195,6 +244,7 @@ def main() -> None:
     parser.add_argument("--baud", type=int, default=115200, help="Serial baud rate")
     parser.add_argument("--host", default=None, help="Optional pool IP/hostname")
     parser.add_argument("--port-num", type=int, default=2813, help="Optional pool port")
+    parser.add_argument("--no-color", action="store_true", help="Disable ANSI colors")
     args = parser.parse_args()
 
     try:
