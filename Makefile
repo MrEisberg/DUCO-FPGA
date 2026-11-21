@@ -1,7 +1,7 @@
 TOP_SIM   := duco_miner
 TOP_FPGA  := duco_top
 RTL_SRCS  := rtl/sha1_core.v rtl/duco_miner.v
-FPGA_SRCS := $(RTL_SRCS) rtl/uart_rx.v rtl/uart_tx.v rtl/pll_45m.v rtl/duco_top.v
+FPGA_SRCS := $(RTL_SRCS) rtl/uart_rx.v rtl/uart_tx.v rtl/pll_50m.v rtl/duco_top.v
 SIM_TB    := sim/tb_duco_miner.cpp
 OBJ_DIR   := obj_dir
 
@@ -37,7 +37,7 @@ pnr: synth $(CST)
 	nextpnr-himbaechel --json $(BUILD_DIR)/$(TOP_FPGA).json \
 		--write $(BUILD_DIR)/$(TOP_FPGA)_pnr.json \
 		--device $(DEVICE) \
-		--freq 45 \
+		--freq 50 \
 		--vopt family=$(FAMILY) \
 		--vopt cst=$(CST)
 

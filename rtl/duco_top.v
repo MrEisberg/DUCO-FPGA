@@ -11,7 +11,7 @@ module duco_top (
     output wire [1:0] led       // Active-low onboard LEDs (pins 15, 16)
 );
 
-    localparam integer CLKS_PER_BIT = 391; // 45,000,000 / 115,200
+    localparam integer CLKS_PER_BIT = 435; // 50,142,857 / 115,200
 
     wire sys_clk;
     wire pll_locked;
