@@ -8,7 +8,7 @@ Hardware DUCO-S1 (Duino-Coin) SHA-1 miner in Verilog for the Sipeed Tang Nano 20
 - `rtl/duco_miner.v` — 10-core lockstep DUCO-S1 miner sharing a single prefix BCD counter (tests `10*prefix + 0..9` in parallel as a single miner to avoid the Kolka multi-miner penalty).
 - `rtl/duco_top.v` — Tang Nano 20K top-level wrapper with 115200 8N1 UART, Double-Dabble BCD converter, Power-On Reset + S1 button reset, and onboard status LEDs (`led[0]` mining heartbeat, `led[1]` share pulse).
 - `rtl/uart_rx.v`, `rtl/uart_tx.v` — 8N1 UART transceiver.
-- `rtl/pll_50m.v` — Gowin `rPLL` (`27 MHz -> 50.14 MHz`).
+- `rtl/pll_60m.v` — Gowin `rPLL` (`27 MHz -> 60.0 MHz`).
 - `sim/tb_duco_miner.cpp` — Verilator unit testbench with verified SHA-1 test vectors.
 - `sim/sim_server.cpp` — Persistent Verilator stdin/stdout job solver for live pool mining in simulation.
 - `host/miner_host.py` — Python host miner supporting both `--backend sim` (Verilator) and `--backend serial` (Tang Nano 20K over USB-UART).
@@ -19,7 +19,7 @@ Hardware DUCO-S1 (Duino-Coin) SHA-1 miner in Verilog for the Sipeed Tang Nano 20
 
 | Branch | Architecture | Clock | `Fmax` | Hashrate |
 |---|---|---|---|---|
-| `master` | 10 cores × 1 round/cycle (shift-reg + early abort + `rPLL`) | 50.14 MHz | ~63.8 MHz | **~6.35 MH/s** |
+| `master` | 10 cores × 1 round/cycle (shift-reg + early abort + `rPLL`) | 60.0 MHz | ~64.3 MHz | **~7.60 MH/s** |
 
 ## 1. Install Tools
 

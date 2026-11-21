@@ -53,23 +53,69 @@ class SimBackend:
 
 class SerialBackend:
     def __init__(self, port: str, baud: int):
+        self._use_pyserial = False
         try:
             import serial  # type: ignore
-        except ImportError as exc:
-            raise RuntimeError("pyserial is required for --backend serial (pip install pyserial)") from exc
-        self.ser = serial.Serial(port, baudrate=baud, timeout=60)
+            self.ser = serial.Serial(port, baudrate=baud, timeout=60)
+            self._use_pyserial = True
+        except ImportError:
+            import os
+            import select
+            import termios
+
+            self._os = os
+            self._select = select
+            baud_map = {
+                9600: termios.B9600,
+                19200: termios.B19200,
+                38400: termios.B38400,
+                57600: termios.B57600,
+                115200: termios.B115200,
+                230400: termios.B230400,
+                460800: termios.B460800,
+                921600: termios.B921600,
+            }
+            if baud not in baud_map:
+                raise RuntimeError(f"Unsupported baud rate {baud} without pyserial")
+            self.fd = os.open(port, os.O_RDWR | os.O_NOCTTY)
+            attrs = termios.tcgetattr(self.fd)
+            attrs[0] = 0
+            attrs[1] = 0
+            attrs[2] = termios.CS8 | termios.CREAD | termios.CLOCAL
+            attrs[3] = 0
+            attrs[4] = baud_map[baud]
+            attrs[5] = baud_map[baud]
+            termios.tcsetattr(self.fd, termios.TCSANOW, attrs)
+            termios.tcflush(self.fd, termios.TCIOFLUSH)
 
     def solve(self, base_hash: str, target_hash: str, max_nonce: int) -> tuple[bool, int, int]:
-        self.ser.write(f"{base_hash},{target_hash},{max_nonce}\n".encode("ascii"))
-        self.ser.flush()
-        line = self.ser.readline().decode("ascii", errors="replace").strip()
+        payload = f"{base_hash},{target_hash},{max_nonce}\n".encode("ascii")
+        if self._use_pyserial:
+            self.ser.write(payload)
+            self.ser.flush()
+            line = self.ser.readline().decode("ascii", errors="replace").strip()
+        else:
+            self._os.write(self.fd, payload)
+            buf = b""
+            while not buf.endswith(b"\n"):
+                r, _, _ = self._select.select([self.fd], [], [], 60.0)
+                if not r:
+                    raise RuntimeError("FPGA serial timeout")
+                chunk = self._os.read(self.fd, 64)
+                if not chunk:
+                    raise RuntimeError("FPGA serial EOF")
+                buf += chunk
+            line = buf.decode("ascii", errors="replace").strip()
         if not line or line.startswith("ERR"):
             raise RuntimeError(f"FPGA serial error: {line}")
         found_s, nonce_s, cycles_s = line.split(",")
         return found_s == "1", int(nonce_s), int(cycles_s)
 
     def close(self) -> None:
-        self.ser.close()
+        if self._use_pyserial:
+            self.ser.close()
+        else:
+            self._os.close(self.fd)
 
 
 def mine_loop(args: argparse.Namespace) -> None:

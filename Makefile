@@ -1,7 +1,7 @@
 TOP_SIM   := duco_miner
 TOP_FPGA  := duco_top
 RTL_SRCS  := rtl/sha1_core.v rtl/duco_miner.v
-FPGA_SRCS := $(RTL_SRCS) rtl/uart_rx.v rtl/uart_tx.v rtl/pll_50m.v rtl/duco_top.v
+FPGA_SRCS := $(RTL_SRCS) rtl/uart_rx.v rtl/uart_tx.v rtl/pll_60m.v rtl/duco_top.v
 SIM_TB    := sim/tb_duco_miner.cpp
 OBJ_DIR   := obj_dir
 
