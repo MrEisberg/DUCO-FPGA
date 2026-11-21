@@ -35,7 +35,7 @@ make sim
 
 | Branch | Architecture | Clock | `Fmax` | Hashrate |
 |---|---|---|---|---|
-| `master` | 10 cores × 1 round/cycle (shift-reg + 45 MHz `rPLL`) | 45 MHz | ~48.6 MHz | **~5.49 MH/s** |
+| `master` | 10 cores × 1 round/cycle (shift-reg + early abort + 50.1 MHz `rPLL`) | 50.1 MHz | ~63.8 MHz | **~6.35 MH/s** |
 | `4core-1round` | 4 cores × 1 round/cycle (`kw` pre-add) | 27 MHz | ~34.5 MHz | **~1.28 MH/s** |
 
 ## 3. Build & Flash to Tang Nano 20K
