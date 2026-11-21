@@ -63,3 +63,12 @@ Start mining (no `pyserial` required on Linux — built-in `termios` fallback is
 Onboard controls:
 - `led` (pin 15): blinks once on each completed job
 - Button `S1` (pin 88): hardware reset (Power-On Reset runs automatically on boot)
+
+### Windows Setup
+
+1. **Toolchain**: Download the Windows build of **OSS CAD Suite** (`oss-cad-suite-windows-x64-...`) and run `environment.bat` in your terminal.
+2. **USB Driver**: Use [Zadig](https://zadig.akeo.ie/) to install `WinUSB` on the Tang Nano 20K's JTAG interface (**Interface 0**) for `openFPGALoader`, leaving **Interface 1** as a standard `COMx` serial port.
+3. **Flash & Mine**: Install `pyserial` (`pip install pyserial`), flash with `make flash-persist`, and run:
+   ```cmd
+   python host\miner_host.py --username YOUR_DUCO_USERNAME --miner-key YOUR_KEY --backend serial --port COM3
+   ```
