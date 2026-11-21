@@ -43,7 +43,24 @@ make sim-server
 
 ## 3. Build & Flash to Tang Nano 20K
 
+> **Cable note**: Use a **USB-A to USB-C data cable** (some Tang Nano 20K boards do not enumerate over USB-C to USB-C). On Linux, ensure your user is in the `uucp` (Arch) or `dialout` (Debian/Ubuntu) group to access `/dev/ttyUSB1`.
+
+Flash to **SRAM** (temporary, lost on power cycle):
 ```bash
 make flash
+```
+
+Or flash to **onboard SPI flash** (persistent across unplugging/reboots):
+```bash
+make flash-persist
+```
+
+Start mining (no `pyserial` required on Linux — built-in `termios` fallback is included):
+```bash
 ./host/miner_host.py --username YOUR_DUCO_USERNAME --miner-key YOUR_KEY --backend serial --port /dev/ttyUSB1
 ```
+
+Onboard LEDs:
+- `led[0]` (pin 15): blinks while mining
+- `led[1]` (pin 16): pulses on each found share
+- Button `S1` (pin 88): hardware reset (Power-On Reset runs automatically on boot)

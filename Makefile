@@ -11,7 +11,7 @@ FAMILY    := GW2A-18C
 CST       := tangnano20k.cst
 BUILD_DIR := build
 
-.PHONY: all sim sim-server clean synth pnr pack flash
+.PHONY: all sim sim-server clean synth pnr pack flash flash-persist
 
 all: sim
 
@@ -46,6 +46,9 @@ pack: pnr
 
 flash: pack
 	openFPGALoader -b tangnano20k $(BUILD_DIR)/$(TOP_FPGA).fs
+
+flash-persist: pack
+	openFPGALoader -b tangnano20k -f $(BUILD_DIR)/$(TOP_FPGA).fs
 
 clean:
 	rm -rf $(OBJ_DIR) $(BUILD_DIR)
