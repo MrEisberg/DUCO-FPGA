@@ -8,7 +8,7 @@ module duco_top (
     input  wire       btn_rst,  // Active-high reset button S1 (pin 88)
     input  wire       uart_rx,  // UART RX (pin 70)
     output wire       uart_tx,  // UART TX (pin 69)
-    output wire [1:0] led       // Active-low onboard LEDs (pins 15, 16)
+    output wire       led       // Active-low onboard LED (pin 15), blinks on done job
 );
 
     localparam integer CLKS_PER_BIT = 521; // 60,000,000 / 115,200
@@ -105,12 +105,10 @@ module duco_top (
     reg [31:0] bcd_shift_bin;
     reg [39:0] bcd_digits;
     reg [5:0]  bcd_cnt;
-    reg [23:0] hb_cnt;
-    reg [22:0] share_cnt;
+    reg [23:0] share_cnt;
     integer    k;
 
-    assign led[0] = !(miner_busy && hb_cnt[23]);
-    assign led[1] = !(share_cnt != 23'd0);
+    assign led = !(share_cnt != 24'd0);
 
     reg [39:0] bcd_adj;
     always @(*) begin
@@ -133,14 +131,12 @@ module duco_top (
             base_hash   <= 320'd0;
             target_hash <= 160'd0;
             max_nonce   <= 32'd0;
-            hb_cnt      <= 24'd0;
-            share_cnt   <= 23'd0;
+            share_cnt   <= 24'd0;
         end else begin
             miner_start <= 1'b0;
             tx_start    <= 1'b0;
-            hb_cnt      <= hb_cnt + 24'd1;
-            if (share_cnt != 23'd0)
-                share_cnt <= share_cnt - 23'd1;
+            if (share_cnt != 24'd0)
+                share_cnt <= share_cnt - 24'd1;
 
             case (state)
                 ST_RX_BASE: begin
@@ -179,8 +175,7 @@ module duco_top (
 
                 ST_MINING: begin
                     if (miner_done) begin
-                        if (miner_found)
-                            share_cnt <= 23'd5400000; // ~0.2s pulse @ 27 MHz
+                        share_cnt <= 24'd6000000; // ~0.1s pulse @ 60 MHz
                         tx_buf[0] <= miner_found ? "1" : "0";
                         tx_buf[1] <= ",";
                         if (!miner_found) begin
