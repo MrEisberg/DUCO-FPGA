@@ -16,6 +16,7 @@ module sha1_core (
     input  wire [31:0]  w12_in,
     input  wire [15:0]  bit_len_in,
     input  wire [159:0] adj_target,  // target_hash - {H0..H4}_INIT
+    output reg          match_h4,    // Registered H4 check (valid at t == 77)
     output wire         match
 );
 
@@ -49,7 +50,7 @@ module sha1_core (
     wire [31:0] wt_exp = rotl32(w[13] ^ w[8] ^ w[2] ^ w[0], 5'd1);
     wire [31:0] temp   = rotl32(a, 5'd5) + f_val + e_plus_kw;
 
-    // Registered state compared directly against pre-subtracted target
+    // Full 160-bit registered state compared directly against pre-subtracted target
     assign match = ({a, b, c, d, e_final} == adj_target);
 
     integer i;
@@ -62,6 +63,7 @@ module sha1_core (
             d         <= 32'd0;
             e_final   <= 32'd0;
             e_plus_kw <= 32'd0;
+            match_h4  <= 1'b0;
             for (i = 0; i < 16; i = i + 1) begin
                 w[i] <= 32'd0;
             end
@@ -89,6 +91,7 @@ module sha1_core (
             d         <= c;
             e_final   <= d;
             e_plus_kw <= d + k_next + w[1];
+            match_h4  <= (rotl32(a, 5'd30) == adj_target[31:0]);
 
             for (i = 0; i < 15; i = i + 1) begin
                 w[i] <= w[i + 1];

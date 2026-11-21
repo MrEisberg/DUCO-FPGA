@@ -74,6 +74,7 @@ module duco_miner (
     };
 
     // Instantiate 10 lockstep shift-register SHA-1 cores (last digit 0..9)
+    wire [9:0] core_match_h4;
     wire [9:0] core_match;
 
     genvar g;
@@ -95,6 +96,7 @@ module duco_miner (
                 .w12_in     (core_w10_12[31:0]),
                 .bit_len_in (bit_len),
                 .adj_target (adj_target),
+                .match_h4   (core_match_h4[g]),
                 .match      (core_match[g])
             );
         end
@@ -197,7 +199,22 @@ module duco_miner (
                 end
 
                 ST_RUN: begin
-                    if (t == 7'd79) begin
+                    if (t == 7'd77 && !(|core_match_h4)) begin
+                        // Early abort: none of the 10 cores matched H4 (registered at t == 76)
+                        if (nonce_base + 32'd10 > max_nonce) begin
+                            found <= 1'b0;
+                            busy  <= 1'b0;
+                            done  <= 1'b1;
+                            state <= ST_IDLE;
+                        end else begin
+                            nonce_base <= nonce_base + 32'd10;
+                            prefix_len <= next_prefix_len;
+                            for (d = 0; d < 9; d = d + 1) begin
+                                prefix_digits[d] <= next_prefix_digits[d];
+                            end
+                            state <= ST_LOAD;
+                        end
+                    end else if (t == 7'd79) begin
                         state <= ST_CHECK;
                     end else begin
                         t <= t + 7'd1;
