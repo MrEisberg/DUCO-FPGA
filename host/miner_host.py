@@ -186,7 +186,7 @@ def main() -> None:
     parser.add_argument("--miner-key", default="", help="Duino-Coin mining key (required if enabled on account)")
     parser.add_argument("--rig-id", default="DUCO-FPGA", help="Rig identifier")
     parser.add_argument("--diff", default="LOW", help="Job difficulty (LOW, MEDIUM, NET, etc.)")
-    parser.add_argument("--software", default="FPGA Miner 0.1", help="Software version string")
+    parser.add_argument("--software", default="FPGA Miner 1.0", help="Software version string")
     parser.add_argument("--chip-id", default=f"DUCOID{random.randint(10000000, 99999999)}", help="Chip ID (random by default)")
     parser.add_argument("--wallet-id", default=str(random.randint(100000, 9999999)), help="Wallet ID (random by default)")
     parser.add_argument("--backend", choices=["sim", "serial"], default="sim")
